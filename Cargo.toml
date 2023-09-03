@@ -1,0 +1,18 @@
+[package]
+name = "loader-static"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+members = ["libelf-sys"]
+
+[dependencies]
+libelf-sys = { path = "libelf-sys" }
+libc = { version = "0.2", default-features = false }
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+

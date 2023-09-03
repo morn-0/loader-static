@@ -83,7 +83,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let mut stack = [0u8; 1 << 20];
-    let sp = stack.as_mut_ptr() as usize + stack.len() - 4096 & !(16 - 1);
+    let sp = (stack.as_mut_ptr() as usize + stack.len() - 4096) & !(16 - 1);
     let sp = sp as *mut libc::c_void;
     let sp_exec = sp;
 
@@ -91,20 +91,21 @@ fn main() -> Result<(), Box<dyn Error>> {
     let rnd = rnd.as_mut_ptr() as u64;
 
     unsafe {
-        let mut sp = push(sp, args.len() - 1);
-        for arg in args {
-            let arg = CString::new(arg).unwrap();
-            arg.as_bytes_with_nul()
-                .iter()
-                .for_each(|b| sp = push(sp, b));
-        }
+        let push_strs = |mut sp, vals| -> Result<*mut libc::c_void, Box<dyn Error>> {
+            for val in vals {
+                let val = CString::new(val)?;
+                val.as_bytes_with_nul()
+                    .iter()
+                    .for_each(|b| sp = push(sp, b));
+            }
 
-        for var in vars {
-            let var = CString::new(var).unwrap();
-            var.as_bytes_with_nul()
-                .iter()
-                .for_each(|b| sp = push(sp, b));
-        }
+            Ok(sp)
+        };
+
+        let mut sp = push(sp, args.len() - 1);
+
+        sp = push_strs(sp, args)?;
+        sp = push_strs(sp, vars)?;
 
         sp = push(sp, 0usize);
         sp = push(

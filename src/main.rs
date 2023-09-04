@@ -1,5 +1,8 @@
-use libelf_sys::{Elf64_Ehdr, Elf64_Phdr, Elf64_auxv_t};
-use std::{arch::asm, env, error::Error, ffi::CString, fs::File, os::fd::AsRawFd, ptr, slice};
+use libelf_sys::{Elf64_Ehdr, Elf64_Phdr, Elf64_auxv_t, Elf64_auxv_t__bindgen_ty_1};
+use std::{
+    arch::asm, env, error::Error, ffi::CString, fs::File, mem::ManuallyDrop, os::fd::AsRawFd, ptr,
+    slice,
+};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut args = env::args();
@@ -85,24 +88,21 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut stack = [0u8; 1 << 20];
     let sp = (stack.as_mut_ptr() as usize + stack.len() - 4096) & !(16 - 1);
     let sp = sp as *mut libc::c_void;
-    let sp_exec = sp;
 
     let mut rnd = [0u8; 16];
     let rnd = rnd.as_mut_ptr() as u64;
 
     unsafe {
-        let push_strs = |mut sp, vals| -> Result<*mut libc::c_void, Box<dyn Error>> {
-            for val in vals {
-                let val = CString::new(val)?;
-                val.as_bytes_with_nul()
-                    .iter()
-                    .for_each(|b| sp = push(sp, b));
+        let push_strs = |mut sp, strs| -> Result<*mut libc::c_void, Box<dyn Error>> {
+            for str in strs {
+                let str = ManuallyDrop::new(CString::new(str)?);
+                sp = push(sp, str.as_ptr());
             }
 
             Ok(sp)
         };
 
-        let mut sp = push(sp, args.len() - 1);
+        let mut sp = push(sp, args.len());
 
         sp = push_strs(sp, args)?;
         sp = push_strs(sp, vars)?;
@@ -112,14 +112,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             sp,
             Elf64_auxv_t {
                 a_type: libc::AT_RANDOM,
-                a_un: libelf_sys::Elf64_auxv_t__bindgen_ty_1 { a_val: rnd },
+                a_un: Elf64_auxv_t__bindgen_ty_1 { a_val: rnd },
             },
         );
         let _ = push(
             sp,
             Elf64_auxv_t {
                 a_type: libc::AT_NULL,
-                a_un: libelf_sys::Elf64_auxv_t__bindgen_ty_1 { a_val: 0 },
+                a_un: Elf64_auxv_t__bindgen_ty_1 { a_val: 0 },
             },
         );
     }
@@ -129,7 +129,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             "mov rdx, 0",
             "mov rsp, {sp}",
             "jmp {entry}",
-            sp = in(reg) sp_exec,
+            sp = in(reg) sp,
             entry = in(reg) ehdr.e_entry,
         }
     }
